@@ -7,8 +7,6 @@ import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
@@ -20,7 +18,6 @@ import eu.kanade.tachiyomi.R
 import exh.metadata.metadata.MangaDexSearchMetadata
 import exh.metadata.metadata.RaisedSearchMetadata
 import exh.metadata.metadata.RankedSearchMetadata
-import kotlinx.coroutines.flow.StateFlow
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.manga.model.MangaCover
 import tachiyomi.presentation.core.components.Badge
@@ -29,7 +26,8 @@ import tachiyomi.presentation.core.util.plus
 
 @Composable
 fun BrowseSourceComfortableGrid(
-    mangaList: LazyPagingItems<StateFlow</* SY --> */Pair<Manga, RaisedSearchMetadata?>/* SY <-- */>>,
+    mangaList: LazyPagingItems</* SY --> */Pair<Manga, RaisedSearchMetadata?>/* SY <-- */>,
+    favorites: Map<String, Manga>,
     columns: GridCells,
     contentPadding: PaddingValues,
     onMangaClick: (Manga) -> Unit,
@@ -47,10 +45,16 @@ fun BrowseSourceComfortableGrid(
             }
         }
 
-        items(count = mangaList.itemCount) { index ->
+        items(
+            count = mangaList.itemCount,
+            key = { i ->
+                mangaList.peek(i)?.first?.let { "${it.source}:${it.url}" } ?: "placeholder-$i"
+            },
+            contentType = { "browse-manga" },
+        ) { index ->
             // SY -->
-            val pair by mangaList[index]?.collectAsState() ?: return@items
-            val manga = pair.first
+            val pair = mangaList[index] ?: return@items
+            val manga = favorites[pair.first.url] ?: pair.first
             val metadata = pair.second
             // SY <--
 

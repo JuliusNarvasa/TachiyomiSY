@@ -99,6 +99,7 @@ data class BrowseSourceScreen(
                 )
             }
         val state by viewModel.state.collectAsState()
+        val favorites by viewModel.favorites.collectAsState()
 
         val navigator = LocalNavigator.currentOrThrow
         val navigateUp: () -> Unit = {
@@ -246,6 +247,9 @@ data class BrowseSourceScreen(
             BrowseSourceContent(
                 source = source,
                 mangaList = viewModel.mangaPagerFlowFlow.collectAsLazyPagingItems(),
+                // SY -->
+                favorites = favorites,
+                // SY <--
                 columns = viewModel.getColumnsPreference(LocalConfiguration.current.orientation),
                 // SY -->
                 ehentaiBrowseDisplayMode = viewModel.ehentaiBrowseDisplayMode,

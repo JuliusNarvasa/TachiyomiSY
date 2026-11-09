@@ -21,7 +21,6 @@ import eu.kanade.presentation.util.formattedMessage
 import eu.kanade.tachiyomi.source.Source
 import exh.metadata.metadata.RaisedSearchMetadata
 import exh.source.isEhBasedSource
-import kotlinx.coroutines.flow.StateFlow
 import mihon.icons.materialsymbols.MaterialSymbols
 import mihon.icons.materialsymbols.automirroredrounded.Help
 import mihon.icons.materialsymbols.rounded.Public
@@ -43,7 +42,8 @@ import tachiyomi.source.local.LocalSource
 @Composable
 fun BrowseSourceContent(
     source: Source?,
-    mangaList: LazyPagingItems<StateFlow</* SY --> */Pair<Manga, RaisedSearchMetadata?>/* SY <-- */>>,
+    mangaList: LazyPagingItems</* SY --> */Pair<Manga, RaisedSearchMetadata?>/* SY <-- */>,
+    favorites: Map<String, Manga>,
     columns: GridCells,
     // SY -->
     ehentaiBrowseDisplayMode: Boolean,
@@ -140,6 +140,7 @@ fun BrowseSourceContent(
     if (source?.isEhBasedSource() == true && ehentaiBrowseDisplayMode) {
         BrowseSourceEHentaiList(
             mangaList = mangaList,
+            favorites = favorites,
             contentPadding = contentPadding,
             onMangaClick = onMangaClick,
             onMangaLongClick = onMangaLongClick,
@@ -152,6 +153,7 @@ fun BrowseSourceContent(
         LibraryDisplayMode.ComfortableGrid -> {
             BrowseSourceComfortableGrid(
                 mangaList = mangaList,
+                favorites = favorites,
                 columns = columns,
                 contentPadding = contentPadding,
                 onMangaClick = onMangaClick,
@@ -161,6 +163,7 @@ fun BrowseSourceContent(
         LibraryDisplayMode.List -> {
             BrowseSourceList(
                 mangaList = mangaList,
+                favorites = favorites,
                 contentPadding = contentPadding,
                 onMangaClick = onMangaClick,
                 onMangaLongClick = onMangaLongClick,
@@ -169,6 +172,7 @@ fun BrowseSourceContent(
         LibraryDisplayMode.CompactGrid, LibraryDisplayMode.CoverOnlyGrid -> {
             BrowseSourceCompactGrid(
                 mangaList = mangaList,
+                favorites = favorites,
                 columns = columns,
                 contentPadding = contentPadding,
                 onMangaClick = onMangaClick,
