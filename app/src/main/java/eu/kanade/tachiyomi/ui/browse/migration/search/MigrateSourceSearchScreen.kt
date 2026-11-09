@@ -58,6 +58,7 @@ data class MigrateSourceSearchScreen(
                 create(sourceId = sourceId, listingQuery = query)
             }
         val state by viewModel.state.collectAsState()
+        val favorites by viewModel.favorites.collectAsState()
 
         val source = state.source
         if (source == null) {
@@ -103,8 +104,11 @@ data class MigrateSourceSearchScreen(
                 }
             }
             BrowseSourceContent(
-                source = source,
+                source = state.source,
                 mangaList = viewModel.mangaPagerFlowFlow.collectAsLazyPagingItems(),
+                // SY -->
+                favorites = favorites,
+                // SY <--
                 columns = viewModel.getColumnsPreference(LocalConfiguration.current.orientation),
                 // SY -->
                 ehentaiBrowseDisplayMode = viewModel.ehentaiBrowseDisplayMode,

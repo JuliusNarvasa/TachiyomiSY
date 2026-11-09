@@ -50,6 +50,7 @@ class BrowseRecommendsScreen(
             create(args = args)
         }
         val state by viewModel.state.collectAsState()
+        val favorites by viewModel.favorites.collectAsState()
         val recommendationState by viewModel.recommendationState.collectAsState()
         if (recommendationState == null) {
             LoadingScreen()
@@ -94,6 +95,9 @@ class BrowseRecommendsScreen(
             BrowseSourceContent(
                 source = state.source,
                 mangaList = viewModel.mangaPagerFlowFlow.collectAsLazyPagingItems(),
+                // SY -->
+                favorites = favorites,
+                // SY <--
                 columns = viewModel.getColumnsPreference(LocalConfiguration.current.orientation),
                 // SY -->
                 ehentaiBrowseDisplayMode = false,

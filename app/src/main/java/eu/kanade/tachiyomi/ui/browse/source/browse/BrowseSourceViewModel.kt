@@ -51,7 +51,6 @@ import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.flatMapLatest
-import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
@@ -73,6 +72,7 @@ import tachiyomi.domain.manga.interactor.GetManga
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.manga.model.MangaUpdate
 import tachiyomi.domain.manga.model.MangaWithChapterCount
+import tachiyomi.domain.manga.repository.MangaRepository
 import tachiyomi.domain.source.interactor.DeleteSavedSearchById
 import tachiyomi.domain.source.interactor.GetRemoteManga
 import tachiyomi.domain.source.interactor.InsertSavedSearch
@@ -104,6 +104,7 @@ import eu.kanade.tachiyomi.source.model.Filter as SourceModelFilter
     private val setMangaCategories: SetMangaCategories,
     private val setMangaDefaultChapterFlags: SetMangaDefaultChapterFlags,
     private val getManga: GetManga,
+    private val mangaRepository: MangaRepository,
     private val updateManga: UpdateManga,
     private val addTracks: AddTracks,
     getIncognitoState: GetIncognitoState,
@@ -216,18 +217,26 @@ import eu.kanade.tachiyomi.source.model.Filter as SourceModelFilter
                 // SY <--
             }.flow.map { pagingData ->
                 pagingData.map { /* SY --> */(manga, metadata)/* SY <-- */ ->
-                    getManga.subscribe(manga.url, manga.source)
-                        .map { it ?: manga }
-                        // SY -->
-                        .combineMetadata(metadata)
-                        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5.seconds), manga to metadata)
+                    // SY -->
+                    manga.combineMetadata(metadata)
                     // SY <--
                 }
-                    .filter { !hideInLibraryItems || !it.value/* SY --> */.first/* SY <-- */.favorite }
+                    .filter { !hideInLibraryItems || !/* SY --> */it.first/* SY <-- */.favorite }
             }
                 .cachedIn(viewModelScope)
         }
-        .stateIn(viewModelScope, SharingStarted.Lazily, emptyFlow())
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5.seconds), emptyFlow())
+
+    // SY -->
+    /**
+     * Single snapshot of all favorites for the browsed source, keyed by remote url.
+     * Replaces the previous per-item `getManga.subscribe(...)` DB flows: the UI merges
+     * each browse item against this map instead of subscribing one query per item.
+     */
+    val favorites: StateFlow<Map<String, Manga>> = mangaRepository.getFavoritesBySourceId(sourceId)
+        .map { list -> list.associateBy { it.url } }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5.seconds), emptyMap())
+    // SY <--
 
     fun getColumnsPreference(orientation: Int): GridCells {
         val isLandscape = orientation == Configuration.ORIENTATION_LANDSCAPE
@@ -240,18 +249,13 @@ import eu.kanade.tachiyomi.source.model.Filter as SourceModelFilter
     }
 
     // SY -->
-    open fun Flow<Manga>.combineMetadata(metadata: RaisedSearchMetadata?): Flow<Pair<Manga, RaisedSearchMetadata?>> {
-        val metadataSource = source!!.getMainSource<MetadataSource<*, *>>()
-        return flatMapLatest { manga ->
-            if (metadataSource != null) {
-                getFlatMetadataById.subscribe(manga.id)
-                    .map { flatMetadata ->
-                        manga to (flatMetadata?.raise(metadataSource.metaClass) ?: metadata)
-                    }
-            } else {
-                flowOf(manga to null)
-            }
-        }
+    open suspend fun Manga.combineMetadata(metadata: RaisedSearchMetadata?): Pair<Manga, RaisedSearchMetadata?> {
+        val metadataSource = this@BrowseSourceViewModel.source?.getMainSource<MetadataSource<*, *>>()
+            ?: return this to metadata
+        // Only favorites have a local row; skip the metadata DB lookups for everything else
+        val localManga = favorites.value[url] ?: return this to metadata
+        val flatMetadata = getFlatMetadataById.await(localManga.id)
+        return localManga to (flatMetadata?.raise(metadataSource.metaClass) ?: metadata)
     }
     // SY <--
 

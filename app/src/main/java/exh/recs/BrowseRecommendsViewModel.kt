@@ -26,12 +26,9 @@ import exh.recs.sources.StaticResultPagingSource
 import exh.source.ExhPreferences
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.flow.flatMapLatest
-import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
@@ -45,6 +42,7 @@ import tachiyomi.domain.manga.interactor.GetFlatMetadataById
 import tachiyomi.domain.manga.interactor.GetManga
 import tachiyomi.domain.manga.interactor.NetworkToLocalManga
 import tachiyomi.domain.manga.model.Manga
+import tachiyomi.domain.manga.repository.MangaRepository
 import tachiyomi.domain.source.interactor.DeleteSavedSearchById
 import tachiyomi.domain.source.interactor.GetRemoteManga
 import tachiyomi.domain.source.interactor.InsertSavedSearch
@@ -58,6 +56,7 @@ import tachiyomi.domain.track.interactor.GetTracks
 class BrowseRecommendsViewModel(
     @Assisted private val args: BrowseRecommendsScreen.Args,
     private val getManga: GetManga,
+    private val mangaRepository: MangaRepository,
     private val networkToLocalManga: NetworkToLocalManga,
     private val getTracks: GetTracks,
     private val trackerManager: TrackerManager,
@@ -109,6 +108,7 @@ class BrowseRecommendsViewModel(
     deleteSavedSearchById = deleteSavedSearchById,
     insertSavedSearch = insertSavedSearch,
     getExhSavedSearch = getExhSavedSearch,
+    mangaRepository = mangaRepository,
 ) {
     @AssistedFactory
     @ManualViewModelAssistedFactoryKey
@@ -125,9 +125,9 @@ class BrowseRecommendsViewModel(
         return value
     }
 
-    override fun Flow<Manga>.combineMetadata(metadata: RaisedSearchMetadata?): Flow<Pair<Manga, RaisedSearchMetadata?>> {
+    override suspend fun Manga.combineMetadata(metadata: RaisedSearchMetadata?): Pair<Manga, RaisedSearchMetadata?> {
         // Overridden to prevent our custom metadata from being replaced from a cache
-        return flatMapLatest { manga -> flowOf(manga to metadata) }
+        return this to metadata
     }
 
     init {

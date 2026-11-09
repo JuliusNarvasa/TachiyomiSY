@@ -45,6 +45,7 @@ class MangaDexFollowsScreen(private val sourceId: Long) : Screen() {
             create(sourceId = sourceId)
         }
         val state by viewModel.state.collectAsState()
+        val favorites by viewModel.favorites.collectAsState()
 
         if (state.source == null) {
             LoadingScreen()
@@ -70,6 +71,9 @@ class MangaDexFollowsScreen(private val sourceId: Long) : Screen() {
             BrowseSourceContent(
                 source = state.source,
                 mangaList = viewModel.mangaPagerFlowFlow.collectAsLazyPagingItems(),
+                // SY -->
+                favorites = favorites,
+                // SY <--
                 columns = viewModel.getColumnsPreference(LocalConfiguration.current.orientation),
                 // SY -->
                 ehentaiBrowseDisplayMode = viewModel.ehentaiBrowseDisplayMode,

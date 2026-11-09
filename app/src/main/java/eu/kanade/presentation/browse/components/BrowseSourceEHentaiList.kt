@@ -13,8 +13,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -38,7 +36,6 @@ import exh.ui.metadata.adapters.MetadataGenre
 import exh.ui.metadata.adapters.MetadataText
 import exh.ui.metadata.adapters.MetadataUIUtil
 import exh.ui.metadata.adapters.MetadataUploader
-import kotlinx.coroutines.flow.StateFlow
 import mihon.icons.materialsymbols.MaterialSymbols
 import mihon.icons.materialsymbols.rounded.Group
 import mihon.icons.materialsymbols.rounded.Palette
@@ -58,7 +55,8 @@ import kotlin.math.round
  */
 @Composable
 fun BrowseSourceEHentaiList(
-    mangaList: LazyPagingItems<StateFlow</* SY --> */Pair<Manga, RaisedSearchMetadata?>/* SY <-- */>>,
+    mangaList: LazyPagingItems</* SY --> */Pair<Manga, RaisedSearchMetadata?>/* SY <-- */>,
+    favorites: Map<String, Manga>,
     contentPadding: PaddingValues,
     onMangaClick: (Manga) -> Unit,
     onMangaLongClick: (Manga) -> Unit,
@@ -72,9 +70,15 @@ fun BrowseSourceEHentaiList(
             }
         }
 
-        items(count = mangaList.itemCount) { index ->
-            val pair by mangaList[index]?.collectAsState() ?: return@items
-            val manga = pair.first
+        items(
+            count = mangaList.itemCount,
+            key = { i ->
+                mangaList.peek(i)?.first?.let { "${it.source}:${it.url}" } ?: "placeholder-$i"
+            },
+            contentType = { "browse-manga" },
+        ) { index ->
+            val pair = mangaList[index] ?: return@items
+            val manga = favorites[pair.first.url] ?: pair.first
             val metadata = pair.second
 
             BrowseSourceEHentaiListItem(
