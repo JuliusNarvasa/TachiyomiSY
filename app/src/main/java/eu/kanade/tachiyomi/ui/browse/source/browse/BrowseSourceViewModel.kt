@@ -10,6 +10,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.paging.Pager
 import androidx.paging.PagingConfig
+import androidx.paging.PagingData
 import androidx.paging.cachedIn
 import androidx.paging.filter
 import androidx.paging.map
@@ -52,6 +53,7 @@ import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -206,26 +208,47 @@ import eu.kanade.tachiyomi.source.model.Filter as SourceModelFilter
      * Flow of Pager flow tied to [State.listing]
      */
     private val hideInLibraryItems = sourcePreferences.hideInLibraryItems.get()
+
+    // SY -->
+    /**
+     * One Pager (and one cachedIn pipeline) per ViewModel: listing/filter changes invalidate
+     * the live PagingSource, releasing the old generation and reloading from
+     * [createSourcePagingSource] with the new listing, while returning to the screen simply
+     * replays the cached generation without refetching.
+     */
+    @Volatile
+    private var currentListing: Listing = Listing.valueOf(listingQuery)
+
+    @Volatile
+    private var currentPagingSource: SourcePagingSource? = null
+
+    private val pagerFlow: Flow<PagingData<Pair<Manga, RaisedSearchMetadata?>>> =
+        Pager(PagingConfig(pageSize = 25)) {
+            createSourcePagingSource(currentListing.query ?: "", currentListing.filters)
+                .also { currentPagingSource = it }
+        }.flow.map { pagingData ->
+            pagingData.map { /* SY --> */(manga, metadata)/* SY <-- */ ->
+                // SY -->
+                manga.combineMetadata(metadata)
+                // SY <--
+            }
+                .filter { !hideInLibraryItems || !/* SY --> */it.first/* SY <-- */.favorite }
+        }
+            .cachedIn(viewModelScope)
+
     val mangaPagerFlowFlow = state.map { it.source to it.listing }
         .filter { (source, _) -> source != null }
         .map { (_, listing) -> listing }
         .distinctUntilChanged()
-        .map { listing ->
-            Pager(PagingConfig(pageSize = 25)) {
-                // SY -->
-                createSourcePagingSource(listing.query ?: "", listing.filters)
-                // SY <--
-            }.flow.map { pagingData ->
-                pagingData.map { /* SY --> */(manga, metadata)/* SY <-- */ ->
-                    // SY -->
-                    manga.combineMetadata(metadata)
-                    // SY <--
-                }
-                    .filter { !hideInLibraryItems || !/* SY --> */it.first/* SY <-- */.favorite }
+        .onEach { listing ->
+            if (listing != currentListing) {
+                currentListing = listing
+                currentPagingSource?.invalidate()
             }
-                .cachedIn(viewModelScope)
         }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5.seconds), emptyFlow())
+        .map { pagerFlow }
+        .stateIn(viewModelScope, SharingStarted.Lazily, emptyFlow())
+    // SY <--
 
     // SY -->
     /**
