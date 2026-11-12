@@ -41,6 +41,9 @@ import exh.source.getMainSource
 import exh.source.mangaDexSourceIds
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -52,8 +55,8 @@ import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -211,21 +214,34 @@ import eu.kanade.tachiyomi.source.model.Filter as SourceModelFilter
 
     // SY -->
     /**
-     * One Pager (and one cachedIn pipeline) per ViewModel: listing/filter changes invalidate
-     * the live PagingSource, releasing the old generation and reloading from
-     * [createSourcePagingSource] with the new listing, while returning to the screen simply
-     * replays the cached generation without refetching.
+     * Per-listing pager flow cache (last 4 listings kept): a NEW listing/search gets a NEW
+     * flow instance so the UI restarts collection and shows the loading screen, while
+     * returning to an already-visited listing replays its cached pages from memory without
+     * refetching. Keyed by [Listing] (data-class equality on query + live filter instances,
+     * matching the [distinctUntilChanged] semantics upstream of it). Evicted entries have
+     * their scope cancelled, releasing the cached generation.
      */
-    @Volatile
-    private var currentListing: Listing = Listing.valueOf(listingQuery)
+    private class CachedPagerFlow(
+        val scope: CoroutineScope,
+        val flow: Flow<PagingData<Pair<Manga, RaisedSearchMetadata?>>>,
+    )
 
-    @Volatile
-    private var currentPagingSource: SourcePagingSource? = null
+    private val cachedPagerFlows = object : LinkedHashMap<Listing, CachedPagerFlow>(16, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Listing, CachedPagerFlow>): Boolean {
+            if (size <= 4) return false
+            eldest.value.scope.cancel()
+            return true
+        }
+    }
 
-    private val pagerFlow: Flow<PagingData<Pair<Manga, RaisedSearchMetadata?>>> =
-        Pager(PagingConfig(pageSize = 25)) {
-            createSourcePagingSource(currentListing.query ?: "", currentListing.filters)
-                .also { currentPagingSource = it }
+    private fun getOrCreatePagerFlow(listing: Listing): Flow<PagingData<Pair<Manga, RaisedSearchMetadata?>>> {
+        cachedPagerFlows[listing]?.let { return it.flow }
+        val scope = CoroutineScope(
+            SupervisorJob(viewModelScope.coroutineContext[Job]) +
+                viewModelScope.coroutineContext.minusKey(Job),
+        )
+        val flow = Pager(PagingConfig(pageSize = 25)) {
+            createSourcePagingSource(listing.query ?: "", listing.filters)
         }.flow.map { pagingData ->
             pagingData.map { /* SY --> */(manga, metadata)/* SY <-- */ ->
                 // SY -->
@@ -234,19 +250,16 @@ import eu.kanade.tachiyomi.source.model.Filter as SourceModelFilter
             }
                 .filter { !hideInLibraryItems || !/* SY --> */it.first/* SY <-- */.favorite }
         }
-            .cachedIn(viewModelScope)
+            .cachedIn(scope)
+        cachedPagerFlows[listing] = CachedPagerFlow(scope, flow)
+        return flow
+    }
 
     val mangaPagerFlowFlow = state.map { it.source to it.listing }
         .filter { (source, _) -> source != null }
         .map { (_, listing) -> listing }
         .distinctUntilChanged()
-        .onEach { listing ->
-            if (listing != currentListing) {
-                currentListing = listing
-                currentPagingSource?.invalidate()
-            }
-        }
-        .map { pagerFlow }
+        .flatMapLatest { listing -> flowOf(getOrCreatePagerFlow(listing)) }
         .stateIn(viewModelScope, SharingStarted.Lazily, emptyFlow())
     // SY <--
 
